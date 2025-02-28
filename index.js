@@ -1,50 +1,73 @@
 const express = require("express");
+const { Sequelize, DataTypes } = require("sequelize");
 const app = express();
-const port = 3000;
+const port = 9000;
 
-let todos = [];
+const sequelize = new Sequelize("todos_db", "postgres", "postgres", {
+  host: "localhost",
+  dialect: "postgres",
+  logging: false,
+});
+
+const Todo = sequelize.define("Todo", {
+  task: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  completed: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  },
+});
+
+sequelize
+  .sync({ force: false, alter: true, logging: true })
+  .then(() => {
+    console.log("Database synced successfully");
+  })
+  .catch((err) => {
+    console.error("Error syncing database:", err);
+  });
+
 app.use(express.json());
 
-app.get("/todos", (req, res) => {
+app.get("/todos", async (req, res) => {
+  const todos = await Todo.findAll();
   res.json(todos);
 });
 
-app.post("/todos", (req, res) => {
-  // console.log("POST request received:", req.body);  // Debugging log
+app.post("/todos", async (req, res) => {
   const { task } = req.body;
   if (!task) {
     res.status(400).json({ error: "Task is required" });
   }
 
-  const newTodo = { id: todos.length + 1, task, completed: "false" };
-  todos.push(newTodo);
-  res.json(newTodo);
+  const todo = await Todo.create({ task });
+  res.json(todo);
 });
-app.put("/todos/:id", (req, res) => {
+app.put("/todos/:id", async (req, res) => {
   const { id } = req.params;
-  const { task, completed } = req.body; // Destructure both 'task' and 'completed' from the request body
-  const todo = todos.find((t) => t.id == id);
+  const { task, completed } = req.body;
+  const todo = await Todo.findByPk(id);
 
   if (!todo) {
     return res.status(404).json({ error: "Todo not found" });
   }
 
-  // Only update the task if it exists in the request body
-  if (task) {
+  if (todo) {
     todo.task = task;
   }
-
-  // Only update the completed status if it exists in the request body
   if (completed !== undefined) {
     todo.completed = completed;
   }
-
-  res.json(todo); // Return the updated todo
+  await todo.save();
+  res.json(todo);
 });
 
-app.delete("/todos/:id", (req, res) => {
+app.delete("/todos/:id", async (req, res) => {
   const { id } = req.params;
-  todos = todos.filter((t) => t.id != id);
+  await Todo.destroy({ where: { id } });
+  const todos = await Todo.findAll();
   res.json(todos);
 });
 app.listen(port, () =>
